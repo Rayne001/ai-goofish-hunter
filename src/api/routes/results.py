@@ -18,6 +18,7 @@ from src.services.result_storage_service import (
     build_result_ndjson,
     delete_result_file_records,
     list_result_filenames,
+    list_result_file_task_names,
     load_all_result_records,
     load_result_blacklist_keywords,
     load_visible_result_item_ids,
@@ -77,6 +78,12 @@ async def delete_result_file(filename: str):
     if deleted_rows <= 0:
         raise HTTPException(status_code=404, detail="文件不存在")
     return {"message": f"文件 {filename} 已成功删除"}
+
+
+@router.get("/file-task-names")
+async def get_result_file_task_names():
+    """Return task names saved with each result group, including orphaned groups."""
+    return {"task_names": await list_result_file_task_names()}
 
 
 @router.get("/{filename}")

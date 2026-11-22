@@ -96,6 +96,12 @@ def _validate_cron_expression(value: Optional[str]) -> Optional[str]:
     return validate_cron_expression(value)
 
 
+def _validate_task_name(value: str) -> str:
+    if value and value[0].isspace():
+        raise ValueError("任务名称不能以空格开头。")
+    return value
+
+
 def _normalize_price_value(value):
     if _normalize_optional_string(value) is None:
         return None
@@ -179,6 +185,11 @@ class TaskCreate(BaseModel):
     region: Optional[str] = None
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
+
+    @field_validator("task_name")
+    @classmethod
+    def validate_task_name(cls, value):
+        return _validate_task_name(value)
 
     @model_validator(mode="before")
     @classmethod
@@ -310,6 +321,11 @@ class TaskGenerateRequest(BaseModel):
     region: Optional[str] = None
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
+
+    @field_validator("task_name")
+    @classmethod
+    def validate_task_name(cls, value):
+        return _validate_task_name(value)
 
     @model_validator(mode="before")
     @classmethod

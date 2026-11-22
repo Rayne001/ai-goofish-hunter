@@ -10,6 +10,7 @@ import { toast } from '@/components/ui/toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import TaskRegionSelector from '@/components/tasks/TaskRegionSelector.vue'
+import { hasLeadingWhitespace } from '@/lib/taskFormValidation'
 
 type FormMode = 'create' | 'edit'
 type EmittedData = TaskGenerateRequest | Partial<Task>
@@ -61,6 +62,12 @@ function isPresetCronValue(value: string): boolean {
 
 // 判断当前 cron 是否为预设值
 const isPresetCron = computed(() => isPresetCronValue(form.value.cron))
+const hasInvalidTaskNameLeadingWhitespace = computed(() => {
+  const currentName = String(form.value.task_name ?? '')
+  if (!hasLeadingWhitespace(currentName)) return false
+  const originalName = String(props.initialData?.task_name ?? '')
+  return props.mode !== 'edit' || currentName !== originalName
+})
 
 // 预设选择的值
 const presetCronValue = computed({
@@ -193,6 +200,15 @@ function handleSubmit() {
     return
   }
 
+  if (hasInvalidTaskNameLeadingWhitespace.value) {
+    toast({
+      title: t('tasks.form.validation.incomplete'),
+      description: t('tasks.form.validation.taskNameLeadingWhitespace'),
+      variant: 'destructive',
+    })
+    return
+  }
+
   const decisionMode = form.value.decision_mode || 'ai'
   if (decisionMode === 'ai' && !String(form.value.description || '').trim()) {
     toast({
@@ -262,7 +278,17 @@ function handleSubmit() {
     <div class="grid gap-6 py-4">
       <div class="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
         <Label for="task-name" class="sm:text-right">{{ t('tasks.form.taskName') }}</Label>
-        <Input id="task-name" v-model="form.task_name" class="sm:col-span-3" :placeholder="t('tasks.form.taskNamePlaceholder')" required />
+        <Input
+          id="task-name"
+          v-model="form.task_name"
+          class="sm:col-span-3"
+          :placeholder="t('tasks.form.taskNamePlaceholder')"
+          :aria-invalid="hasInvalidTaskNameLeadingWhitespace"
+          required
+        />
+        <p v-if="hasInvalidTaskNameLeadingWhitespace" class="text-xs text-destructive sm:col-span-3 sm:col-start-2">
+          {{ t('tasks.form.validation.taskNameLeadingWhitespace') }}
+        </p>
       </div>
       <div class="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
         <Label for="keyword" class="sm:text-right">{{ t('tasks.form.keyword') }}</Label>

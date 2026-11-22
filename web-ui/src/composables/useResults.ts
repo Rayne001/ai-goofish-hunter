@@ -6,6 +6,7 @@ import * as resultsApi from '@/api/results'
 import type { GetResultContentParams } from '@/api/results'
 import { useWebSocket } from '@/composables/useWebSocket'
 import * as tasksApi from '@/api/tasks'
+import { buildTaskNameByResultFile } from '@/lib/resultTaskNames'
 
 export function useResults() {
   const { t } = useI18n()
@@ -19,7 +20,7 @@ export function useResults() {
   const page = ref(1)
   const limit = ref(100)
   const blacklistKeywords = ref<string[]>([])
-  const taskNameByKeyword = ref<Record<string, string>>({})
+  const taskNameByResultFile = ref<Record<string, string>>({})
   const isFileOptionsReady = ref(false)
   const hasFetchedFiles = ref(false)
   const hasFetchedTasks = ref(false)
@@ -50,14 +51,6 @@ export function useResults() {
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
   const { on } = useWebSocket()
-
-  function normalizeKeyword(value: string) {
-    return value.trim().toLowerCase().replace(/\s+/g, '_')
-  }
-
-  function getKeywordFromFilename(filename: string) {
-    return filename.replace(/_full_data\.jsonl$/i, '').toLowerCase()
-  }
 
   // Methods
   async function fetchFiles() {
@@ -142,14 +135,14 @@ export function useResults() {
 
   async function fetchTaskNameMap() {
     try {
-      const tasks = await tasksApi.getAllTasks()
-      const mapping: Record<string, string> = {}
-      tasks.forEach((task) => {
-        if (task.keyword) {
-          mapping[normalizeKeyword(task.keyword)] = task.task_name
-        }
-      })
-      taskNameByKeyword.value = mapping
+      const [tasks, storedTaskNames] = await Promise.all([
+        tasksApi.getAllTasks(),
+        resultsApi.getResultFileTaskNames(),
+      ])
+      taskNameByResultFile.value = {
+        ...storedTaskNames,
+        ...buildTaskNameByResultFile(tasks),
+      }
     } catch (e) {
       if (e instanceof Error) error.value = e
     } finally {
@@ -275,8 +268,7 @@ export function useResults() {
 
   const fileOptions = computed(() =>
     files.value.map((file) => {
-      const keyword = getKeywordFromFilename(file)
-      const taskName = taskNameByKeyword.value[keyword]
+      const taskName = taskNameByResultFile.value[file]
       return {
         value: file,
         taskName: taskName || t('common.unnamed'),

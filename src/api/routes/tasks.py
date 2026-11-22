@@ -149,6 +149,12 @@ async def update_task(
         existing_task = await service.get_task(task_id)
         if not existing_task:
             raise HTTPException(status_code=404, detail="任务未找到")
+        if (
+            task_update.task_name is not None
+            and task_update.task_name != existing_task.task_name
+            and task_update.task_name[:1].isspace()
+        ):
+            raise HTTPException(status_code=400, detail="任务名称不能以空格开头。")
         _validate_final_account_strategy(existing_task, task_update)
 
         current_mode = getattr(existing_task, "decision_mode", "ai") or "ai"

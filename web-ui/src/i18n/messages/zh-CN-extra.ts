@@ -133,6 +133,7 @@ const zhCNExtra = {
       validation: {
         incomplete: '信息不完整',
         nameAndKeywordRequired: '任务名称和关键词不能为空。',
+        taskNameLeadingWhitespace: '任务名称不能以空格开头。',
         aiDescriptionRequired: 'AI 模式下详细需求不能为空。',
         keywordRuleIncomplete: '关键词规则不完整',
         keywordRuleRequired: '关键词模式下至少需要一个关键词。',

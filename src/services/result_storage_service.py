@@ -224,6 +224,38 @@ def _list_result_filenames_sync() -> list[str]:
     return [str(row["result_filename"]) for row in rows]
 
 
+async def list_result_file_task_names() -> dict[str, str]:
+    return await asyncio.to_thread(_list_result_file_task_names_sync)
+
+
+def _list_result_file_task_names_sync() -> dict[str, str]:
+    """Map each results file to its most recently stored non-empty task name."""
+    bootstrap_sqlite_storage()
+    with sqlite_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT result_filename, task_name
+            FROM (
+                SELECT
+                    result_filename,
+                    task_name,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY result_filename
+                        ORDER BY crawl_time DESC, id DESC
+                    ) AS row_number
+                FROM result_items
+                WHERE TRIM(COALESCE(task_name, '')) <> ''
+            )
+            WHERE row_number = 1
+            """
+        ).fetchall()
+    return {
+        str(row["result_filename"]): str(row["task_name"]).strip()
+        for row in rows
+        if str(row["task_name"] or "").strip()
+    }
+
+
 async def result_file_exists(filename: str) -> bool:
     return await asyncio.to_thread(_result_file_exists_sync, filename)
 

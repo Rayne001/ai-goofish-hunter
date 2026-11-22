@@ -17,6 +17,11 @@ export async function getResultFiles(): Promise<string[]> {
   return data.files || []
 }
 
+export async function getResultFileTaskNames(): Promise<Record<string, string>> {
+  const data = await http('/api/results/file-task-names')
+  return data.task_names || {}
+}
+
 export async function deleteResultFile(filename: string): Promise<{ message: string }> {
   return await http(`/api/results/files/${filename}`, { method: 'DELETE' })
 }

@@ -133,6 +133,7 @@ const enUSExtra = {
       validation: {
         incomplete: 'Incomplete information',
         nameAndKeywordRequired: 'Task name and keyword are required.',
+        taskNameLeadingWhitespace: 'Task name cannot start with whitespace.',
         aiDescriptionRequired: 'Detailed requirement is required in AI mode.',
         keywordRuleIncomplete: 'Incomplete keyword rules',
         keywordRuleRequired: 'At least one keyword is required in keyword mode.',
