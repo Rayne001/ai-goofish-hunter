@@ -15,3 +15,8 @@ prompts/
 .serena/
 price_history/
 data/
+
+# Keep local backend and frontend test suites out of Git
+/tests/
+/web-ui/tests/
+
