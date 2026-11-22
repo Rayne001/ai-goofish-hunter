@@ -18,6 +18,9 @@ export function getAiTestNotice(result: AiTestResponse): {
   }
 }
 
-export function formatAiTestSuccessDescription(template: string, response: string): string {
-  return template.replace('{response}', () => response)
+export function formatAiTestSuccessDescription(
+  translate: (params: { response: string }) => string,
+  response: string,
+): string {
+  return translate({ response })
 }

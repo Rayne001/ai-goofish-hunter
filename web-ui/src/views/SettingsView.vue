@@ -114,7 +114,7 @@ async function handleTestAi() {
     const notice = getAiTestNotice(res)
     if (notice.kind === 'success') {
       const description = formatAiTestSuccessDescription(
-        t('settings.ai.testSuccessDescription'),
+        params => t('settings.ai.testSuccessDescription', params),
         notice.text,
       )
       notifySuccess(t('settings.ai.testSuccess'), description)
