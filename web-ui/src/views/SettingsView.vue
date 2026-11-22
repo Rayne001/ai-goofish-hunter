@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettings } from '@/composables/useSettings'
+import { getAiTestNotice, formatAiTestSuccessDescription } from '@/lib/aiTestOutcome'
 import type { NotificationSettingsUpdate, NotificationTestResponse } from '@/api/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -110,7 +111,16 @@ async function handleSaveRotation() {
 async function handleTestAi() {
   try {
     const res = await testAiConnection()
-    notifySuccess(t('settings.ai.testSuccess'), res.message)
+    const notice = getAiTestNotice(res)
+    if (notice.kind === 'success') {
+      const description = formatAiTestSuccessDescription(
+        t('settings.ai.testSuccessDescription'),
+        notice.text,
+      )
+      notifySuccess(t('settings.ai.testSuccess'), description)
+    } else {
+      notifyError(t('settings.ai.testFailed'), notice.text)
+    }
   } catch (e) {
     notifyError(t('settings.ai.testFailed'), (e as Error).message)
   }

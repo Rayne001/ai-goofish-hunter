@@ -3,6 +3,7 @@
 """
 import os
 from typing import Optional
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException
@@ -41,6 +42,21 @@ from src.services.process_service import ProcessService
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 AI_TEST_PROMPT = "Reply with OK only."
 AI_TEST_MAX_OUTPUT_TOKENS = 32
+SENSENOVA_FLASH_LITE_MODEL = "sensenova-6.8-flash-lite"
+SENSENOVA_TOKEN_PLAN_HOST = "token.sensenova.cn"
+
+
+def _uses_sensenova_flash_lite(settings: dict) -> bool:
+    model_name = str(settings.get("OPENAI_MODEL_NAME") or "").strip().lower()
+    base_url = str(settings.get("OPENAI_BASE_URL") or "").strip()
+    try:
+        host = (urlsplit(base_url).hostname or "").lower()
+    except ValueError:
+        return False
+    return (
+        model_name == SENSENOVA_FLASH_LITE_MODEL
+        and host == SENSENOVA_TOKEN_PLAN_HOST
+    )
 
 
 def _reload_env() -> None:
@@ -310,17 +326,21 @@ async def test_ai_settings(settings: dict):
         client = OpenAI(**client_params)
         messages = [{"role": "user", "content": AI_TEST_PROMPT}]
         api_mode = CHAT_COMPLETIONS_API_MODE
+        use_sensenova_reasoning_none = _uses_sensenova_flash_lite(settings)
 
         try:
+            request_params = build_ai_request_params(
+                api_mode,
+                model=model_name,
+                messages=messages,
+                max_output_tokens=AI_TEST_MAX_OUTPUT_TOKENS,
+            )
+            if use_sensenova_reasoning_none:
+                request_params["reasoning_effort"] = "none"
             response = create_ai_response_sync(
                 client,
                 api_mode,
-                build_ai_request_params(
-                    api_mode,
-                    model=model_name,
-                    messages=messages,
-                    max_output_tokens=AI_TEST_MAX_OUTPUT_TOKENS,
-                ),
+                request_params,
             )
         except Exception as exc:
             if not is_chat_completions_api_unsupported_error(exc):
