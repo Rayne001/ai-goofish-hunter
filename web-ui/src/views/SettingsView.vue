@@ -12,7 +12,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/toast'
-import { getPromptContent, listPrompts, updatePrompt } from '@/api/prompts'
+import {
+  deleteOrphanPrompts,
+  getPromptContent,
+  listPrompts,
+  scanOrphanPrompts,
+  updatePrompt,
+  type PromptOrphanCandidate,
+} from '@/api/prompts'
 import NotificationSettingsPanel from '@/components/settings/NotificationSettingsPanel.vue'
 import RotationSettingsPanel from '@/components/settings/RotationSettingsPanel.vue'
 const { t } = useI18n()
@@ -44,6 +51,13 @@ const promptContent = ref('')
 const isPromptLoading = ref(false)
 const isPromptSaving = ref(false)
 const promptError = ref<string | null>(null)
+const promptCleanupEnabled = ref(false)
+const promptCleanupCandidates = ref<PromptOrphanCandidate[]>([])
+const selectedOrphanPrompts = ref<string[]>([])
+const isPromptCleanupScanning = ref(false)
+const isPromptCleanupDeleting = ref(false)
+const promptCleanupScanned = ref(false)
+const promptCleanupError = ref<string | null>(null)
 
 function notifySuccess(title: string, description?: string) {
   toast({ title, description })
@@ -127,6 +141,47 @@ async function fetchPrompts() {
   }
 }
 
+async function handleScanOrphanPrompts() {
+  isPromptCleanupScanning.value = true
+  promptCleanupError.value = null
+  try {
+    const result = await scanOrphanPrompts()
+    promptCleanupEnabled.value = result.enabled
+    promptCleanupCandidates.value = result.candidates
+    selectedOrphanPrompts.value = []
+    promptCleanupScanned.value = true
+  } catch (e) {
+    promptCleanupError.value = (e as Error).message || t('settings.prompts.cleanupFailed')
+  } finally {
+    isPromptCleanupScanning.value = false
+  }
+}
+
+async function handleDeleteOrphanPrompts() {
+  const filenames = [...selectedOrphanPrompts.value]
+  if (!promptCleanupEnabled.value || filenames.length === 0) return
+
+  const confirmed = window.confirm(t('settings.prompts.cleanupConfirm', { count: filenames.length }))
+  if (!confirmed) return
+
+  isPromptCleanupDeleting.value = true
+  promptCleanupError.value = null
+  try {
+    const result = await deleteOrphanPrompts(filenames)
+    notifySuccess(
+      t('settings.prompts.cleanupSuccess', { count: result.count }),
+      result.deleted.join(', '),
+    )
+    selectedOrphanPrompts.value = []
+    await fetchPrompts()
+    await handleScanOrphanPrompts()
+  } catch (e) {
+    promptCleanupError.value = (e as Error).message || t('settings.prompts.cleanupFailed')
+  } finally {
+    isPromptCleanupDeleting.value = false
+  }
+}
+
 async function handleSavePrompt() {
   if (!selectedPrompt.value) {
     notifyError(t('settings.prompts.selectPromptFile'))
@@ -146,6 +201,7 @@ async function handleSavePrompt() {
 watch(activeTab, (tab) => {
   if (tab === 'prompts') {
     fetchPrompts()
+    handleScanOrphanPrompts()
   }
 })
 
@@ -368,6 +424,65 @@ watch(selectedPrompt, async (value) => {
           <CardFooter>
             <Button :disabled="isPromptSaving || !selectedPrompt" @click="handleSavePrompt">
               {{ isPromptSaving ? t('common.saving') : t('settings.prompts.save') }}
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <Card class="mt-4">
+          <CardHeader>
+            <CardTitle>{{ t('settings.prompts.cleanupTitle') }}</CardTitle>
+            <CardDescription>{{ t('settings.prompts.cleanupDescription') }}</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-3">
+            <p v-if="!promptCleanupEnabled" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {{ t('settings.prompts.cleanupDisabled') }}
+            </p>
+            <div v-if="promptCleanupError" class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+              {{ promptCleanupError }}
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                :disabled="isPromptCleanupScanning || isPromptCleanupDeleting"
+                @click="handleScanOrphanPrompts"
+              >
+                {{ isPromptCleanupScanning ? t('settings.prompts.cleanupScanning') : t('settings.prompts.cleanupScan') }}
+              </Button>
+              <span v-if="promptCleanupEnabled && promptCleanupScanned" class="text-sm text-slate-500" aria-live="polite">
+                {{ t('settings.prompts.cleanupCount', { count: promptCleanupCandidates.length }) }}
+              </span>
+            </div>
+            <div v-if="promptCleanupEnabled && promptCleanupCandidates.length" class="divide-y rounded-lg border">
+              <label
+                v-for="candidate in promptCleanupCandidates"
+                :key="candidate.filename"
+                class="flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-50"
+              >
+                <input
+                  v-model="selectedOrphanPrompts"
+                  type="checkbox"
+                  :value="candidate.filename"
+                  class="mt-1 h-4 w-4 rounded border-slate-300"
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="block break-all text-sm font-medium text-slate-800">{{ candidate.filename }}</span>
+                  <span class="mt-1 block break-all text-xs text-slate-500">
+                    {{ t('settings.prompts.cleanupFileInfo', { size: candidate.size_bytes, modified: candidate.modified_at }) }}
+                  </span>
+                </span>
+              </label>
+            </div>
+            <p v-else-if="promptCleanupEnabled && promptCleanupScanned" class="text-sm text-slate-500">
+              {{ t('settings.prompts.cleanupNone') }}
+            </p>
+          </CardContent>
+          <CardFooter v-if="promptCleanupEnabled && promptCleanupCandidates.length">
+            <Button
+              variant="destructive"
+              :disabled="isPromptCleanupDeleting || selectedOrphanPrompts.length === 0"
+              @click="handleDeleteOrphanPrompts"
+            >
+              {{ isPromptCleanupDeleting ? t('settings.prompts.cleanupDeleting') : t('settings.prompts.cleanupDelete', { count: selectedOrphanPrompts.length }) }}
             </Button>
           </CardFooter>
         </Card>

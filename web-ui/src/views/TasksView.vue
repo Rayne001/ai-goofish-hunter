@@ -4,14 +4,19 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTasks } from '@/composables/useTasks'
 import type { Task, TaskUpdate } from '@/types/task.d.ts'
+import { filterTasks, getPageItems, paginateTasks, type TaskListModeFilter, type TaskListStatusFilter } from '@/lib/taskListFilters'
 import { parseTaskFormDefaults } from '@/lib/taskFormQuery'
 import TaskCreateDialog from '@/components/tasks/TaskCreateDialog.vue'
 import TasksTable from '@/components/tasks/TasksTable.vue'
 import TaskForm from '@/components/tasks/TaskForm.vue'
 import { listAccounts, type AccountItem } from '@/api/accounts'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/toast'
+import { ChevronLeft, ChevronRight, RotateCcw, Search, SlidersHorizontal } from 'lucide-vue-next'
 import {
   Dialog,
   DialogContent,
@@ -34,6 +39,45 @@ const {
   stoppingTaskIds,
 } = useTasks()
 const route = useRoute()
+const taskQuery = ref('')
+const statusFilter = ref<TaskListStatusFilter>('all')
+const decisionModeFilter = ref<TaskListModeFilter>('all')
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+const filteredTasks = computed(() => filterTasks(tasks.value, {
+  query: taskQuery.value,
+  status: statusFilter.value,
+  decisionMode: decisionModeFilter.value,
+}))
+const pageInfo = computed(() => paginateTasks(
+  filteredTasks.value,
+  currentPage.value,
+  pageSize.value,
+))
+const pageItems = computed(() => getPageItems(pageInfo.value.page, pageInfo.value.pageCount))
+const hasActiveFilters = computed(() => Boolean(
+  taskQuery.value.trim() || statusFilter.value !== 'all' || decisionModeFilter.value !== 'all'
+))
+
+watch([taskQuery, statusFilter, decisionModeFilter, pageSize], () => {
+  currentPage.value = 1
+})
+
+watch(() => pageInfo.value.pageCount, (pageCount) => {
+  if (currentPage.value > pageCount) currentPage.value = pageCount
+})
+
+function clearTaskFilters() {
+  taskQuery.value = ''
+  statusFilter.value = 'all'
+  decisionModeFilter.value = 'all'
+}
+
+function handlePageSizeChange(value: unknown) {
+  const nextSize = Number(value)
+  if (Number.isFinite(nextSize) && nextSize > 0) pageSize.value = nextSize
+}
 
 // State for dialogs
 const isEditDialogOpen = ref(false)
@@ -266,8 +310,154 @@ onMounted(fetchAccountOptions)
       <span class="block sm:inline">{{ error.message }}</span>
     </div>
 
+    <section class="app-surface mb-6 overflow-hidden" :aria-label="t('tasks.list.ariaLabel')">
+      <div class="flex flex-col gap-3 border-b border-slate-100/80 bg-white/55 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <SlidersHorizontal class="h-4 w-4" />
+          </div>
+          <div class="min-w-0">
+            <h2 class="text-sm font-bold text-slate-800">{{ t('tasks.list.toolbarTitle') }}</h2>
+            <p class="mt-0.5 text-xs leading-5 text-slate-500">{{ t('tasks.list.toolbarDescription') }}</p>
+          </div>
+        </div>
+        <div class="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm" aria-live="polite">
+          <span class="h-1.5 w-1.5 rounded-full bg-primary/80" />
+          {{ t('tasks.list.range', { start: pageInfo.start, end: pageInfo.end, total: pageInfo.total }) }}
+        </div>
+      </div>
+
+      <div class="grid gap-3 p-4 sm:p-5 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.45fr)_minmax(170px,1fr)_minmax(170px,1fr)]">
+        <div class="grid min-w-0 gap-1.5 md:col-span-2 xl:col-span-1">
+          <Label for="task-list-search" class="text-xs font-semibold text-slate-500">{{ t('tasks.list.searchLabel') }}</Label>
+          <div class="relative">
+            <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              id="task-list-search"
+              v-model="taskQuery"
+              type="search"
+              :placeholder="t('tasks.list.searchPlaceholder')"
+              :aria-label="t('tasks.list.searchPlaceholder')"
+              class="h-10 rounded-xl border-slate-200/80 bg-white/85 pl-9 shadow-sm placeholder:text-slate-400 focus-visible:bg-white"
+            />
+          </div>
+        </div>
+
+        <div class="grid min-w-0 gap-1.5">
+          <Label for="task-status-filter" class="text-xs font-semibold text-slate-500">{{ t('tasks.list.statusLabel') }}</Label>
+          <Select
+            :model-value="statusFilter"
+            @update:model-value="(value) => statusFilter = value as TaskListStatusFilter"
+          >
+            <SelectTrigger id="task-status-filter" class="h-10 rounded-xl border-slate-200/80 bg-white/85 shadow-sm">
+              <SelectValue :placeholder="t('tasks.list.allStatuses')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{{ t('tasks.list.allStatuses') }}</SelectItem>
+              <SelectItem value="running">{{ t('tasks.list.running') }}</SelectItem>
+              <SelectItem value="enabled">{{ t('tasks.list.enabled') }}</SelectItem>
+              <SelectItem value="disabled">{{ t('tasks.list.disabled') }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div class="grid min-w-0 gap-1.5">
+          <Label for="task-mode-filter" class="text-xs font-semibold text-slate-500">{{ t('tasks.list.modeLabel') }}</Label>
+          <Select
+            :model-value="decisionModeFilter"
+            @update:model-value="(value) => decisionModeFilter = value as TaskListModeFilter"
+          >
+            <SelectTrigger id="task-mode-filter" class="h-10 rounded-xl border-slate-200/80 bg-white/85 shadow-sm">
+              <SelectValue :placeholder="t('tasks.list.allModes')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{{ t('tasks.list.allModes') }}</SelectItem>
+              <SelectItem value="ai">{{ t('tasks.list.aiMode') }}</SelectItem>
+              <SelectItem value="keyword">{{ t('tasks.list.keywordMode') }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-3 border-t border-slate-100/80 bg-slate-50/45 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div class="flex min-h-9 items-center gap-2">
+          <span v-if="hasActiveFilters" class="inline-flex items-center rounded-full bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
+            {{ t('tasks.list.activeFilters') }}
+          </span>
+          <Button v-if="hasActiveFilters" size="sm" variant="ghost" class="h-8 rounded-lg px-2.5 text-slate-500" @click="clearTaskFilters">
+            <RotateCcw class="h-3.5 w-3.5" />
+            {{ t('tasks.list.clearFilters') }}
+          </Button>
+        </div>
+
+        <div v-if="pageInfo.total > 0" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          <div class="flex items-center gap-2">
+            <Label for="task-page-size" class="whitespace-nowrap text-xs font-medium text-slate-500">{{ t('tasks.list.pageSize') }}</Label>
+            <Select :model-value="String(pageSize)" @update:model-value="handlePageSizeChange">
+              <SelectTrigger id="task-page-size" class="h-9 w-[76px] rounded-lg border-slate-200/80 bg-white px-2 shadow-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="flex items-center gap-2 sm:pl-1">
+            <span class="hidden whitespace-nowrap text-xs font-medium text-slate-500 md:inline">
+              {{ t('tasks.list.page', { page: pageInfo.page, pages: pageInfo.pageCount }) }}
+            </span>
+            <nav class="flex items-center gap-0.5 rounded-xl border border-slate-200/80 bg-white p-1 shadow-sm" :aria-label="t('tasks.list.pageNavigation')">
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                class="size-8 rounded-lg text-slate-500"
+                :disabled="pageInfo.page <= 1"
+                :aria-label="t('tasks.list.previous')"
+                @click="currentPage = pageInfo.page - 1"
+              >
+                <ChevronLeft class="h-4 w-4" />
+              </Button>
+              <template v-for="(item, index) in pageItems" :key="`page-${index}-${item}`">
+                <span v-if="item === 'ellipsis'" class="min-w-5 px-1 text-center text-xs font-medium text-slate-400" aria-hidden="true">…</span>
+                <Button
+                  v-else
+                  size="icon-sm"
+                  :variant="item === pageInfo.page ? 'default' : 'ghost'"
+                  :class="item === pageInfo.page ? 'size-8 rounded-lg shadow-sm' : 'size-8 rounded-lg text-slate-600'"
+                  :aria-label="t('tasks.list.goToPage', { page: item })"
+                  :aria-current="item === pageInfo.page ? 'page' : undefined"
+                  @click="currentPage = item"
+                >
+                  {{ item }}
+                </Button>
+              </template>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                class="size-8 rounded-lg text-slate-500"
+                :disabled="pageInfo.page >= pageInfo.pageCount"
+                :aria-label="t('tasks.list.next')"
+                @click="currentPage = pageInfo.page + 1"
+              >
+                <ChevronRight class="h-4 w-4" />
+              </Button>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div v-if="tasks.length > 0 && filteredTasks.length === 0" class="app-surface p-8 text-center text-sm text-slate-500">
+      {{ t('tasks.list.noMatches') }}
+    </div>
+
     <TasksTable
-      :tasks="tasks"
+      v-else
+      :tasks="pageInfo.items"
       :is-loading="isLoading"
       :stopping-ids="stoppingTaskIds"
       @delete-task="handleDeleteTask"

@@ -5,6 +5,17 @@ export interface PromptContent {
   content: string
 }
 
+export interface PromptOrphanCandidate {
+  filename: string
+  size_bytes: number
+  modified_at: string
+}
+
+export interface PromptOrphanScan {
+  enabled: boolean
+  candidates: PromptOrphanCandidate[]
+}
+
 export async function listPrompts(): Promise<string[]> {
   return await http('/api/prompts')
 }
@@ -18,5 +29,19 @@ export async function updatePrompt(filename: string, content: string): Promise<{
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
+  })
+}
+
+export async function scanOrphanPrompts(): Promise<PromptOrphanScan> {
+  return await http('/api/prompts/orphans')
+}
+
+export async function deleteOrphanPrompts(
+  filenames: string[],
+): Promise<{ deleted: string[]; count: number }> {
+  return await http('/api/prompts/orphans', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filenames }),
   })
 }

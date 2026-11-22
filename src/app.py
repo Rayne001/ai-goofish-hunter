@@ -3,11 +3,14 @@
 整合所有路由和服务
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from urllib.parse import urlsplit
 
 from src.api.routes import (
+    auth,
     dashboard,
     tasks,
     logs,
@@ -31,6 +34,7 @@ from src.services.task_generation_service import TaskGenerationService
 from src.infrastructure.persistence.sqlite_bootstrap import bootstrap_sqlite_storage
 from src.infrastructure.persistence.sqlite_task_repository import SqliteTaskRepository
 from src.infrastructure.config.settings import settings as app_settings
+from src.auth.session_store import SESSION_COOKIE_NAME, get_session_user
 
 
 # 全局服务实例
@@ -102,6 +106,32 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+@app.middleware("http")
+async def require_session_for_api(request: Request, call_next):
+    """Protect API and schema endpoints while keeping the login shell public."""
+    path = request.url.path
+    protected_path = (
+        path == "/api"
+        or path.startswith("/api/")
+        or path in {"/docs", "/redoc", "/openapi.json"}
+    )
+    origin_checked_path = protected_path or path in {"/auth/login", "/auth/status", "/auth/logout"}
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and origin_checked_path:
+        origin = request.headers.get("origin")
+        host = request.headers.get("host")
+        if origin and host and urlsplit(origin).netloc.lower() != host.lower():
+            return JSONResponse(status_code=403, content={"detail": "Invalid request origin"})
+
+    if protected_path:
+        username = get_session_user(
+            request.cookies.get(SESSION_COOKIE_NAME),
+            expected_username=app_settings.web_username,
+        )
+        if not username:
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+    return await call_next(request)
+
 # 注册路由
 app.include_router(tasks.router)
 app.include_router(dashboard.router)
@@ -112,6 +142,7 @@ app.include_router(results.router)
 app.include_router(login_state.router)
 app.include_router(websocket.router)
 app.include_router(accounts.router)
+app.include_router(auth.router)
 
 # 挂载静态文件
 # 旧的静态文件目录（用于截图等）
@@ -131,27 +162,7 @@ async def health_check():
     return {"status": "healthy", "message": "服务正常运行"}
 
 
-# 认证状态检查端点
-from fastapi import Request, HTTPException
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-@app.post("/auth/status")
-async def auth_status(payload: LoginRequest):
-    """检查认证状态"""
-    if payload.username == app_settings.web_username and payload.password == app_settings.web_password:
-        return {"authenticated": True, "username": payload.username}
-    raise HTTPException(status_code=401, detail="认证失败")
-
-
 # 主页路由 - 服务 Vue 3 SPA
-from fastapi.responses import JSONResponse
-
 @app.get("/")
 async def read_root(request: Request):
     """提供 Vue 3 SPA 的主页面"""

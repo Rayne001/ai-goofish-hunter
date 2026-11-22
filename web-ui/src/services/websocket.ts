@@ -8,11 +8,7 @@ class WebSocketService {
   private shouldConnect = false;
 
   constructor() {
-    // 延迟连接，等待认证完成
-    // 只有在已登录时才尝试连接
-    if (localStorage.getItem('auth_logged_in') === 'true') {
-      this.connect();
-    }
+    // The authenticated session check in useAuth starts the connection.
   }
 
   public start() {
@@ -60,14 +56,19 @@ class WebSocketService {
       }
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event: CloseEvent) => {
       if (this.isConnected) {
         console.log('WebSocket disconnected');
         this.isConnected = false;
         this.emit('disconnected', { isConnected: false });
       }
-      // 只有在 shouldConnect 为 true 或已登录时才重连
-      if (this.shouldConnect || localStorage.getItem('auth_logged_in') === 'true') {
+      if (event.code === 4401 || event.code === 4403) {
+        this.shouldConnect = false;
+        this.emit('unauthorized', { code: event.code });
+        return;
+      }
+      // Reconnect only while an authenticated client explicitly wants the socket.
+      if (this.shouldConnect) {
         setTimeout(() => this.connect(), this.reconnectInterval);
       }
     };

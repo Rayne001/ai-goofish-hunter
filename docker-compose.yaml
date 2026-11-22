@@ -1,11 +1,13 @@
 services:
   app:
-    image: ${APP_IMAGE:-ghcr.io/usagi-org/ai-goofish:latest}
-    container_name: ai-goofish-monitor-app
-    pull_policy: always
+    image: ai-goofish-hunter:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-goofish-hunter-app
     init: true
     ports:
-      - "8000:8000"
+      - "127.0.0.1:18000:8000"
     env_file:
       - .env
     environment:

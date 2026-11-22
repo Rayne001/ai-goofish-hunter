@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import DashboardTaskSearch from '@/components/layout/DashboardTaskSearch.vue'
@@ -10,11 +10,13 @@ import {
   Search, 
   UserCircle,
   HelpCircle,
-  Menu
+  Menu,
+  LogOut,
 } from 'lucide-vue-next'
 import Badge from '@/components/ui/badge/Badge.vue'
 import { useMobileNav } from '@/composables/useMobileNav'
 import { useI18n } from 'vue-i18n'
+import { useAuth } from '@/composables/useAuth'
 
 const router = useRouter()
 const route = useRoute()
@@ -23,10 +25,35 @@ const inactiveSearchValue = ref('')
 const { t } = useI18n()
 
 const isDashboard = computed(() => route.name === 'Dashboard')
+const { username, logout } = useAuth()
+const isUserMenuOpen = ref(false)
+const userMenuRef = ref<HTMLElement | null>(null)
 
-function goAccounts() {
-  router.push('/accounts')
+function handleDocumentClick(event: MouseEvent) {
+  const target = event.target as Node | null
+  if (target && !userMenuRef.value?.contains(target)) {
+    isUserMenuOpen.value = false
+  }
 }
+
+function handleEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') isUserMenuOpen.value = false
+}
+
+async function handleLogout() {
+  isUserMenuOpen.value = false
+  await logout()
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+  document.addEventListener('keydown', handleEscape)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  document.removeEventListener('keydown', handleEscape)
+})
 
 function goNotifications() {
   router.push({ name: 'Settings', query: { tab: 'notifications' } })
@@ -104,20 +131,43 @@ function goPrompts() {
       
       <div class="h-6 w-px bg-slate-200 mx-1 hidden sm:block"></div>
 
-      <Button 
-        variant="ghost" 
-        class="hidden sm:flex items-center gap-2 pl-2 pr-4 rounded-full hover:bg-slate-100 transition-all active:scale-95"
-        :aria-label="t('header.openAccounts')"
-        @click="goAccounts"
-      >
-        <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden border border-slate-300 shadow-sm">
-           <UserCircle class="w-6 h-6 text-slate-500" />
+      <div ref="userMenuRef" class="relative">
+        <Button
+          variant="ghost"
+          class="flex items-center gap-2 rounded-full pl-2 pr-3 hover:bg-slate-100 transition-all active:scale-95"
+          :aria-label="t('header.openUserMenu')"
+          :aria-expanded="isUserMenuOpen"
+          aria-haspopup="menu"
+          @click.stop="isUserMenuOpen = !isUserMenuOpen"
+        >
+          <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden border border-slate-300 shadow-sm">
+            <UserCircle class="w-6 h-6 text-slate-500" />
+          </div>
+          <div class="text-left hidden lg:block">
+            <p class="text-xs font-black text-slate-700 leading-none mb-0.5">{{ username || 'Admin' }}</p>
+            <p class="text-[10px] text-slate-400 font-medium">{{ t('header.userMenu') }}</p>
+          </div>
+        </Button>
+        <div
+          v-if="isUserMenuOpen"
+          class="absolute right-0 top-full z-[120] mt-2 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+          role="menu"
+          @click.stop
+        >
+          <div class="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
+            {{ username }}
+          </div>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-red-50 hover:text-red-700"
+            role="menuitem"
+            @click="handleLogout"
+          >
+            <LogOut class="h-4 w-4" />
+            {{ t('header.logout') }}
+          </button>
         </div>
-        <div class="text-left hidden lg:block">
-           <p class="text-xs font-black text-slate-700 leading-none mb-0.5">Xianyu Admin</p>
-           <p class="text-[10px] text-slate-400 font-medium">{{ t('header.accountManagement') }}</p>
-        </div>
-      </Button>
+      </div>
 
       <Button
         variant="ghost"
